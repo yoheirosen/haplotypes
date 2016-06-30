@@ -292,4 +292,42 @@ int main(void) {
   }
 
   cerr << "RR tests passed!" << endl;
+
+  vector<vector<int> > test_down
+    { {4,3,2,1,0}
+    };
+
+  pt = convert_test_structure(test_down);
+
+  vector<vector<int> > test_up
+    { {3,3,3,3,3},
+        {4,4,4,4},
+          {5,5,5},
+            {6,6},
+              {7}
+    };
+
+  vector<vector<int> > test_triangle
+    { {5,5,5},
+        {2,0}
+    };
+
+  vector<vector<int> > test_switch
+    { {8,0},
+        {4}
+    };
+
+  vector<vector<int> > leave_together
+    { {5,4,3},
+        {6,5},
+          {7}
+    };
+
+  vector<vector<int> > test_snake
+    { {4,4,4,0,0},
+        {3,3,3,0},
+          {2,2,2}
+    };
+
+
 }
