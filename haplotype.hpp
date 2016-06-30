@@ -4,6 +4,8 @@
 #include <iostream>
 #include <vector>
 
+#include "dummy_gPBWT.hpp"
+
 using namespace std;
 
 // Dummy vector in place of h_iv from xg
@@ -38,17 +40,6 @@ public:
   double rr_all(int height, int width);
 };
 
-// Right now this is a dummy version of the ThreadSearchState placed here so
-// that the code will compile; TO DO: Implement this in such a way as to allow
-// tests before merging into xg/vg
-struct ThreadSearchState{
-public:
-  int64_t range_start;
-  int64_t range_end;
-  int64_t current_side;
-  inline int count();
-};
-
 class rectangle {
 private:
   // Search interval in B[] corresponding to strip
@@ -60,10 +51,10 @@ public:
   // This lets us find I^a_b-1; R^a_b-1 without having to keep indices
   // consistent between cross-sections
   rectangle* prev;
-  int64_t J;
-  int64_t I;
+  int J;
+  int I;
   double R;
-  inline int64_t get_next_J(int64_t next_id);
+  inline int get_next_J(int64_t next_id);
   inline void extend(int64_t next_id);
 };
 
@@ -75,7 +66,7 @@ private:
   int b_index;
 public:
   vector<rectangle> S;
-  int64_t height;
+  int height;
   int width = 1;
 
   cross_section(rectangle test_R,int64_t new_height,int i,int64_t new_id);

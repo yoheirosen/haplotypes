@@ -2,6 +2,8 @@
 
 using namespace std;
 
+projected_thread pt;
+
 RRMemo::RRMemo(double recombination_penalty)  {
   rho = recombination_penalty;
   exp_rho = exp(-rho);
@@ -103,19 +105,6 @@ double rr_all(int height, int width, double recombination_penalty) {
   return exp_rho * pow(1.0 + (height - 1.0) * exp_rho, width - 1.0);
 }
 
-int64_t where_to(int64_t current_side, int64_t range, int64_t next_side) {
-  // dummy for now to allow compiling; fill this in--either merge into xg or
-  // re-write a version which works on test cases
-}
-
-inline int ThreadSearchState::count() {
-  if(range_start >= range_end) {
-    return 0;
-  } else {
-    return range_end - range_start;
-  }
-}
-
 cross_section::cross_section(rectangle R,int64_t new_height,int i,int64_t new_id) {
   S.push_back(R);
   b_index = i;
@@ -127,35 +116,35 @@ inline int64_t cross_section::get_id() {
   return id;
 }
 
-inline int64_t rectangle::get_next_J(int64_t next_id) {
+inline int rectangle::get_next_J(int64_t next_id) {
   // TO DO: make this work locally
-  /*
-  if(state.current_side == 0) {
-    // When we start a new thread in current_threads_to_extend we make a new
+  if(!state.is_empty()) { // When we start a new thread in current_threads_to_extend we make a new
     // ThreadSearchState. Set its interval to the entirety of the starting node
     state.range_start = 0;
-    state.range_end = h_iv[(node_rank_as_entity(next_id) - 1) * 2 + next_is_reverse];
+    // int64_t next_side = id_to_rank(next_id)*2 + next_is_reverse;
+    // state.range_end = h_iv[next_side];
+    state.range_end = pt.h_iv(next_id);
   } else {
     // Not brand new so extend it
-    state.range_start = where_to(state.current_side, state.range_start, next_id);
-    state.range_end = where_to(state.current_side, state.range_end, next_id);
-  }*/
+    state.range_start = pt.where_to(state.range_start, next_id);
+    state.range_end = pt.where_to(state.range_end, next_id);
+  }
   return state.count();
 }
 
 inline void rectangle::extend(int64_t next_id) {
-  state.range_start = where_to(state.current_side, state.range_start, next_id);
-  state.range_end = where_to(state.current_side, state.range_end, next_id);
+  state.range_start = pt.where_to(state.range_start, next_id);
+  state.range_end = pt.where_to(state.range_end, next_id);
 }
 
 haplo_d::haplo_d(vector<int64_t> h) {
-  int64_t prev_height = h_iv[h[0]];
-  int64_t new_height;
-  int64_t curr_width = 0;
+  int prev_height = pt.h_iv(h[0]);
+  int new_height;
+  int curr_width = 0;
   for(int i = 1; i < h.size(); i++) {
-    new_height = h_iv[h[i]];
+    new_height = pt.h_iv(h[0]);
     curr_width++;
-    rectangle test_R;
+    rectangle test_R = cs.back().S[0];
     test_R.J = test_R.get_next_J(h[i]);
     if(prev_height > test_R.J || test_R.J < new_height) {
       cs.back().width = curr_width;
@@ -172,10 +161,14 @@ void haplo_d::calculate_Is(vector<int64_t> h) {
   for(int b = 1; b < cs.size(); b++) {
     int64_t next_id = cs[b].get_id();
     int i = 0;
-    int64_t new_J = cs[b].S[0].get_next_J(next_id);
-    int64_t last_J = cs[b-1].S[0].J;
+    int new_J = cs[b].S[0].get_next_J(next_id);
+    int last_J = cs[b-1].S[0].J;
     bool more_changes = new_J < last_J;
     bool keep_going;
+    // TO DO: right now this searches top-level down only--likely the most
+    // efficient thing is to search bottom-up as well. Consider alternating.
+    // The advantage is that top-level *and* bottom level strips are most
+    // likely to change or leave
     while(more_changes) {
       last_J = cs[b-1].S[i].J;
       cs[b].S.push_back(cs[b-1].S[i]);
@@ -227,7 +220,7 @@ double haplo_d::probability(double recombination_penalty) {
     }
     // calculate contributions from all continuing strips
     for(int a = 0; a < (cs[b].S.size() -1); a++) {
-      cs[b].S[a].R =  
+      cs[b].S[a].R =
       ((1 - memo.recombination_penalty()) * (S1 * memo.rr_diff(cs[b].height, cs[b].width)) +
       ((cs[b].S[a].prev->R) * memo.rr_adj(cs[b].width)) +
       (memo.recombination_penalty() * S1S2 * memo.rr_all(cs[b].height,cs[b].width)));
@@ -298,6 +291,5 @@ int main(void) {
     }
   }
 
-  cerr << "Tests passed!" << endl;
-
+  cerr << "RR tests passed!" << endl;
 }
