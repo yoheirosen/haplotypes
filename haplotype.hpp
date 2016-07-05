@@ -43,17 +43,17 @@ public:
 class rectangle {
 private:
   // Search interval in B[] corresponding to strip
-  ThreadSearchState state;
   // index of this strip's first node within A. We don't use this yet, but we
   // will when start talking about edits to haplo_d's
-  int a_index;
 public:
+  ThreadSearchState state;
+  int a_index;
   // This lets us find I^a_b-1; R^a_b-1 without having to keep indices
   // consistent between cross-sections
-  rectangle* prev;
+  rectangle* prev = NULL;
   int J;
   int I;
-  double R;
+  double R = 0;
   inline int get_next_J(int64_t next_id);
   inline void extend(int64_t next_id);
 };
@@ -69,7 +69,7 @@ public:
   int height;
   int width = 1;
 
-  cross_section(rectangle test_R,int64_t new_height,int i,int64_t new_id);
+  cross_section(int64_t new_height,int i,int64_t new_id);
   inline int64_t get_id();
 };
 
