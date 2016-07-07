@@ -126,7 +126,9 @@ inline int rectangle::get_next_J(int64_t next_id) {
     state.range_end = pt.h_iv(next_id-1);
   } else {
     // Not brand new so extend it
+    cerr << "extending " << state.range_start << " and ";
     state.range_start = pt.where_to(state.range_start, next_id);
+    cerr << state.range_end << endl;
     state.range_end = pt.where_to(state.range_end, next_id);
   }
   if(state.range_start == 0) {
@@ -144,7 +146,10 @@ inline void rectangle::extend(int64_t next_id) {
 haplo_d::haplo_d(vector<int64_t> h) {
   rectangle rect;
   rect.J = pt.h_iv(0);
+  rect.I = rect.J;
   int last_height = rect.J;
+  rect.state.range_start = 1;
+  rect.state.range_end = pt.h_iv(h[0]);
   cs.push_back(cross_section(rect.J,0,h[0]));
   cs.back().S.push_back(rect);
   cs.back().S.back().prev = &cs.back().S.back();
@@ -152,15 +157,12 @@ haplo_d::haplo_d(vector<int64_t> h) {
   int new_height;
   bool add_rectangle;
   bool add_A;
-  rect.state.range_start = 1;
-  rect.state.range_end = pt.h_iv(h[0]);
-  for(int i = 1; i < h.size()-1; i++) {
+  for(int i = 1; i < h.size(); i++) {
     //cerr << "node " << i << ":" << endl;
     width++;
     new_height = pt.h_iv(h[i]);
-    // dont need to copy rect since it's already what we want
+    rect = cs.back().S[0];
     rect.J = rect.get_next_J(h[i]); // step this strip forward
-    //cerr << " interval start " << rect.state.range_start << " interval end " << rect.state.range_end << endl;
     if(last_height > rect.J) {
       //cerr << "last_height > rect.J" << endl;
       add_A = 1;
@@ -175,108 +177,70 @@ haplo_d::haplo_d(vector<int64_t> h) {
       cs.back().width = width;
       width = 0;
       cs.push_back(cross_section(new_height,i,h[i]));
-      cs.back().S.push_back(rect);
-      cs.back().S.back().prev = &(cs.end()[-2].S.back());
     }
     if(add_rectangle) {
       rectangle new_rect;
-      new_rect.J = new_rect.get_next_J(h[i]);
+      new_rect.state.range_start = 1;
+      new_rect.state.range_end = new_height;
+      new_rect.J = new_height;
       cs.back().height = new_rect.J;
       cs.back().S.push_back(new_rect);
+      cs.back().S.back().I = new_rect.J - rect.J;
+      cerr << "at " << i << " added new rectangle with J =" << cs.back().S.back().J << " , I = " << cs.back().S.back().J << endl;
+    }
+    if(add_A) {
+      cs.back().S.push_back(rect);
+      cs.back().S.back().prev = &(cs.end()[-2].S.back());
+      cerr << "at " << i << " added new rectangle with J =" << cs.back().S.back().J << endl;
     }
     last_height = new_height;
     add_A = 0;
     add_rectangle = 0;
   }
-  cs.back().width = width;
-  // Add final rectangle; needs to be treated differently since there is no
-  // "next" node. Furthremore, we know that it is in A.
-  new_height = pt.h_nodes.end()[-2].next_ranks.back();
-  width++;
-  rect = cs.back().S[0];
-  rect.J = new_height; // step this strip forward
-  cs.back().width = width;
-  cross_section new_cs = cross_section(new_height,h.back(),h.back());
-  new_cs.S.push_back(rect);
-  cs.push_back(new_cs);
-  cs.back().height = rect.J;
-  cs.back().S.back().prev = &(cs.end()[-2].S.back());
 }
 
-// Because of how J-value queries must be done, we get a gPBWT search-state
-// extension for free on all except for top-level queries
-// This function actually also finishes building the cross_sections
-void haplo_d::calculate_Is(vector<int64_t> h) {
-  for(int i = 0; i < cs.size(); i++) {
-    cs[i].S[0].I = cs[i].S[0].J;
-    cs[i].height = cs[i].S[0].J;
-  }
+/* haplo_d::calculate_Js(vector<int64_t> h) {
   for(int b = 1; b < cs.size(); b++) {
     int64_t next_id = cs[b].get_id();
-    int i = 0;
-    int new_J = cs[b].S[0].J;
-    int last_J = cs[b-1].S[0].J;
-    bool more_changes = ((new_J < last_J) && (cs[b].S.size() > 1));
-    bool keep_going = 0;
-    // TO DO: right now this searches top-level down only--likely the most
-    // efficient thing is to search bottom-up as well. Consider alternating.
-    // The advantage is that top-level *and* bottom level strips are most
-    // likely to change or leave
-    while(more_changes) {
-      // make a temporary copy of the highest rank rectangle from last cross_section
-      cs[b].S.push_back(cs[b-1].S[i]);
-      // and assign the same rectangle as its predecessor
-      cs[b].S.back().prev = &cs[b-1].S[i];
-      new_J = cs[b].S.back().get_next_J(next_id);
-      if(new_J == 0) {
-        // give this an I of 0
-        cs[b].S.back().I = 0;
-        // give the rectangle one rank up I = J
-        cs[b].S.end()[-2].I = cs[b].S.end()[-2].J;
-        // All lower rank intervals are also empty; stop searching
-        keep_going = 0;
-        break;
-      } else {
-        // This or a child interval is nonempty
-        // TODO: check for empty intervals
-        if(new_J == last_J) {
-          // no change at this level
-          cs[b].S.end()[-2].I = cs[b].S.end()[-2].prev->I;
-          // We can stop searching for changes
-          // We want to break the loop then start a new loop filling in all lower
-          // ranked rectangles as unchanged
-          keep_going = 1;
-          more_changes = 0;
-          break;
-        } else {
-          // there is a change in J at this level
-          // ie J must get *smaller*
-          cs[b].S.end()[-2].I = cs[b].S.back().J - new_J;
-          if(i == cs[b-1].S.size() - 1) {
-            more_changes = 0;
-            break;
-          } else {
-            i++;
-          }
+  }
+}*/
+
+void haplo_d::calculate_Is(vector<int64_t> h) {
+  // node 1 is done
+  for(int b = 1; b < cs.size(); b++) {
+    int64_t next_id = cs[b].get_id();
+    bool nonempty_J = 1;
+    bool change_in_J = 1;
+    int new_J;
+    int old_J;
+    for(int a = 1; a < cs[b-1].S.size(); a++) {
+      if(change_in_J) {
+        cs[b].S.push_back(cs[b-1].S[a]);
+        cs[b].S.back().prev = &cs[b-1].S[a];
+        old_J = cs[b].S.back().J;
+        new_J = cs[b].S.back().get_next_J(next_id);
+        cs[b].S.end()[-2].I = cs[b].S.end()[-2].J - new_J;
+        if(old_J == new_J) {
+          change_in_J = 0;
+        } else if(new_J == 0) {
+          change_in_J = 0;
+          nonempty_J = 0;
+          cs[b].S.pop_back();
         }
-      }
-      last_J = cs[b-1].S[i].J;
-    }
-    if(keep_going && !more_changes) {
-      for(i; i < cs[b-1].S.size(); i++) {
-        cs[b].S.push_back(cs[b-1].S[i]);
-        cs[b].S.back().prev = &cs[b-1].S[i];
-        cs[b].S.back().extend(h[i]); //is this necessary?
+      } else if(nonempty_J) {
+        cs[b].S.push_back(cs[b-1].S[a]);
+        cs[b].S.back().prev = &cs[b-1].S[a];
       }
     }
+    cs[b].S.back().I = cs[b].S.back().J;
   }
   for(int i = 0; i < cs.size(); i++) {
     cerr << "at node " << i;
     for(int j = 0; j < cs[i].S.size(); j++) {
-       cerr <<", I = " << cs[i].S[j].J;
+       cerr <<", J = " << cs[i].S[j].J;
+       cerr <<", I = " << cs[i].S[j].I;
     }
     cerr << " & ht = " << cs[i].height << " & width = " << cs[i].width << endl;
-    cerr << "and the previous node has J = " << cs[i].S[0].prev->J << endl;
   }
 }
 
@@ -333,13 +297,15 @@ projected_thread array_to_projected_thread(vector<vector<int> > test_array) {
       int b = test_array[i][j+1];
       int left = a - b;
       int tot = thread.h_nodes[i+j].next_ranks.back();
-      cerr << "left = " << left << ", tot = " << tot << endl;
       for(int k = 1; k <= b; k++) {
         thread.h_nodes[i+j].next_ranks.push_back(tot + k);
       }
       for(int l = 0; l < left; l++) {
         thread.h_nodes[i+j].next_ranks.push_back(thread.h_nodes[i+j].next_ranks.back());
       }
+    }
+    for(int j = 0; j < test_array[i].back(); j++) {
+      thread.h_nodes.back().next_ranks.push_back(0);
     }
   }
   return thread;
@@ -416,12 +382,9 @@ int main(void) {
     cerr << "}" << endl;
   }
   haplo_d hd_down = haplo_d(h_down);
-  //cerr << "found A's" << endl;
   hd_down.calculate_Is(h_down);
-  //cerr << "Calculated I's" << endl;
-  //double prob_down = hd_down.probability(0.2);
-
-  //cerr << "Calculated " << prob_down << " as P(h|G,H) for test case 'down'" << endl;
+  double prob_down = hd_down.probability(0.2);
+  cerr << "Calculated " << prob_down << " as P(h|G,H) for test case 'down'" << endl;
 
   vector<vector<int> > test_up
     { {3,3,3,3,3},
@@ -431,22 +394,23 @@ int main(void) {
               {7}
     };
 
+  vector<int64_t> h_up {0,1,2,3,4};
+  h_iv = {3,7,12,18,25};
+  pt = array_to_projected_thread(test_up);
 
-    vector<int64_t> h_up {0,1,2,3,4};
-    h_iv = {3,7,12,18,25};
-    pt = array_to_projected_thread(test_up);
-
-    haplo_d hd_up = haplo_d(h_up);
-    hd_up.calculate_Is(h_up);
-
-
-    for(int i = 0; i < pt.h_nodes.size(); i++) {
-      cerr << "next_ranks @ node" << i << " = { ";
-      for(int j = 0; j < pt.h_nodes[i].next_ranks.size(); j++) {
-        cerr << pt.h_nodes[i].next_ranks[j] << " ";
-      }
-      cerr << "}" << endl;
+  for(int i = 0; i < pt.h_nodes.size(); i++) {
+    cerr << "next_ranks @ node" << i << " = { ";
+    for(int j = 0; j < pt.h_nodes[i].next_ranks.size(); j++) {
+      cerr << pt.h_nodes[i].next_ranks[j] << " ";
     }
+    cerr << "}" << endl;
+  }
+
+  haplo_d hd_up = haplo_d(h_up);
+  hd_up.calculate_Is(h_up);
+  double prob_up = hd_up.probability(0.2);
+  cerr << "Calculated " << prob_up << " as P(h|G,H) for test case 'up'" << endl;
+
 
   vector<vector<int> > test_triangle
     { {5,5,5},
