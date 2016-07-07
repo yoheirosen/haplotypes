@@ -152,7 +152,7 @@ haplo_d::haplo_d(vector<int64_t> h) {
   rect.state.range_end = pt.h_iv(h[0]);
   cs.push_back(cross_section(rect.J,0,h[0]));
   cs.back().S.push_back(rect);
-  cs.back().S.back().prev = &cs.back().S.back();
+  cs.back().S.back().prev = &empty_rect;
   int width = 0;
   int new_height;
   bool add_rectangle;
@@ -186,6 +186,7 @@ haplo_d::haplo_d(vector<int64_t> h) {
       cs.back().height = new_rect.J;
       cs.back().S.push_back(new_rect);
       cs.back().S.back().I = new_rect.J - rect.J;
+      cs.back().S.back().prev = &empty_rect;
       cerr << "at " << i << " added new rectangle with J =" << cs.back().S.back().J << " , I = " << cs.back().S.back().J << endl;
     }
     if(add_A) {
@@ -198,12 +199,6 @@ haplo_d::haplo_d(vector<int64_t> h) {
     add_rectangle = 0;
   }
 }
-
-/* haplo_d::calculate_Js(vector<int64_t> h) {
-  for(int b = 1; b < cs.size(); b++) {
-    int64_t next_id = cs[b].get_id();
-  }
-}*/
 
 void haplo_d::calculate_Is(vector<int64_t> h) {
   // node 1 is done
@@ -412,15 +407,47 @@ int main(void) {
   cerr << "Calculated " << prob_up << " as P(h|G,H) for test case 'up'" << endl;
 
 
-  vector<vector<int> > test_triangle
+  vector<vector<int> > test_tri
     { {5,5,5},
         {2,0}
     };
+  vector<int64_t> h_tri {0,1,2};
+  h_iv = {5,7,5};
+  pt = array_to_projected_thread(test_tri);
+  for(int i = 0; i < pt.h_nodes.size(); i++) {
+    cerr << "next_ranks @ node" << i << " = { ";
+    for(int j = 0; j < pt.h_nodes[i].next_ranks.size(); j++) {
+      cerr << pt.h_nodes[i].next_ranks[j] << " ";
+    }
+    cerr << "}" << endl;
+  }
+
+  haplo_d hd_tri = haplo_d(h_tri);
+  hd_tri.calculate_Is(h_tri);
+  double prob_tri = hd_tri.probability(0.2);
+  cerr << "Calculated " << prob_tri << " as P(h|G,H) for test case 'up'" << endl;
+
+
 
   vector<vector<int> > test_switch
     { {8,0},
         {4}
     };
+  vector<int64_t> h_switch {0,1};
+  h_iv = {8,4};
+  pt = array_to_projected_thread(test_switch);
+  for(int i = 0; i < pt.h_nodes.size(); i++) {
+    cerr << "next_ranks @ node" << i << " = { ";
+    for(int j = 0; j < pt.h_nodes[i].next_ranks.size(); j++) {
+      cerr << pt.h_nodes[i].next_ranks[j] << " ";
+    }
+    cerr << "}" << endl;
+  }
+
+  haplo_d hd_switch = haplo_d(h_switch);
+  hd_switch.calculate_Is(h_switch);
+  double prob_switch = hd_switch.probability(0.2);
+  cerr << "Calculated " << prob_switch << " as P(h|G,H) for test case 'up'" << endl;
 
   vector<vector<int> > leave_together
     { {5,4,3},

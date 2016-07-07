@@ -51,8 +51,8 @@ public:
   // This lets us find I^a_b-1; R^a_b-1 without having to keep indices
   // consistent between cross-sections
   rectangle* prev = NULL;
-  int J;
-  int I;
+  int J = 0;
+  int I = 0;
   double R = 0;
   inline int get_next_J(int64_t next_id);
   inline void extend(int64_t next_id);
@@ -76,6 +76,7 @@ public:
 // A haplo_d indexes |A| + 1 columns of rectangles S^*_b according in A-order
 class haplo_d {
 public:
+  rectangle empty_rect;
   vector<cross_section> cs;
   haplo_d(vector<int64_t> h);
   // Needs to be called before the cross_sections have I values in their rectangles
