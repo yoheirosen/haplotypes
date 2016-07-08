@@ -185,7 +185,7 @@ haplo_d::haplo_d(vector<int64_t> h) {
     }
     if(add_A) {
       cs.back().S.push_back(rect);
-      cs.back().S.back().prev = &(cs.back().S[0]);
+      cs.back().S.back().prev = &(cs.end()[-2].S[0]);
     }
     last_height = new_height;
     add_A = 0;
@@ -251,10 +251,12 @@ double haplo_d::probability(double recombination_penalty) {
     S1S2 = 0;
     for(int a = 0; a < cs[b].S.size(); a++) {
       // N.B. that R's are r^a_b's rather that R^a_b's. Thus the I factor
+      cerr << "(cs[b].S[a].prev->R) = " << (cs[b].S[a].prev->R) << " (cs[b].S[a].I) = " << (cs[b].S[a].I) << endl;
       S1 += (cs[b].S[a].prev->R) * (cs[b].S[a].I);
     }
-    cerr << "S1 = " << S1;
+    cerr << "S1 = " << S1 << endl;
     for(int a = 0; a < cs[b-1].S.size(); a++) {
+      cerr << "(cs[b].S[a].prev->R) = " << (cs[b].S[a].prev->R) << " (cs[b].S[a].prev->I) = " << (cs[b].S[a].prev->I) << endl;
       S1S2 += (cs[b].S[a].prev->R) * (cs[b].S[a].prev->I);
     }
     cerr << "S1S2 = " << S1S2 << endl;
