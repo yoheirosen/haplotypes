@@ -2,8 +2,6 @@
 
 using namespace std;
 
-projected_thread pt;
-
 RRMemo::RRMemo(double recombination_penalty)  {
   rho = recombination_penalty;
   exp_rho = exp(-rho);
@@ -105,62 +103,53 @@ double rr_all(int height, int width, double recombination_penalty) {
   return exp_rho * pow(1.0 + (height - 1.0) * exp_rho, width - 1.0);
 }
 
-cross_section::cross_section(int64_t new_height,int i,int64_t new_id) {
-  b_index = i;
+// Rectangular decomposition building:
+
+cross_section::cross_section(int64_t new_height,int b,int64_t new_node_id) {
+  b_index = b;
   height = new_height;
   id = new_id;
+}
+
+void rectangle::extend(int64_t next_id) {
+  if(state.current_side == 0) {
+    state.range_start = 0;
+    state.range_end = h_iv[(node_rank_as_entity(next_id) - 1) * 2 + next_is_reverse];
+  } else {
+    // Else, look at where the path goes to and apply the where_to function to shrink the range down.
+    state.range_start = where_to(state.current_side, state.range_start, next_side);
+    state.range_end = where_to(state.current_side, state.range_end, next_side);
+  }
+  state.current_side = next_side;
+}
+
+int rectangle::get_next_J(int64_t next_id) {
+  extend(next_id);
+  return state.count();
 }
 
 inline int64_t cross_section::get_id() {
   return id;
 }
 
-inline int rectangle::get_next_J(int64_t next_id) {
-  // TO DO: make this work locally
-  if(state.is_empty()) { // When we start a new thread in current_threads_to_extend we make a new
-    // ThreadSearchState. Set its interval to the entirety of the starting node
-    //cerr << "Starting a new strip at " << next_id - 1 << endl;
-    state.range_start = 1;
-    // int64_t next_side = id_to_rank(next_id)*2 + next_is_reverse;
-    // state.range_end = h_iv[next_side];
-    state.range_end = pt.h_iv(next_id-1);
-  } else {
-    // Not brand new so extend it
-    state.range_start = pt.where_to(state.range_start, next_id);
-    state.range_end = pt.where_to(state.range_end, next_id);
-  }
-  if(state.range_end == 0) {
-    return 0;
-  } else {
-    return state.count() + 1;
-  }
-}
-
-inline void rectangle::extend(int64_t next_id) {
-  state.range_start = pt.where_to(state.range_start, next_id);
-  state.range_end = pt.where_to(state.range_end, next_id);
-}
-
-haplo_d::haplo_d(vector<int64_t> h) {
+haplo_d::haplo_d(const thread_t& t) {
   rectangle rect;
-  rect.J = pt.h_iv(0);
+  rect.J = rect.get_next_J(t[0].node_id);
   rect.I = rect.J;
   int last_height = rect.J;
-  rect.state.range_start = 1;
-  rect.state.range_end = pt.h_iv(h[0]);
-  cs.push_back(cross_section(rect.J,0,h[0]));
+  // TODO FIX INITIALIZATION OF CS
+  cs.push_back(cross_section(rect.J,0,t[0].node_id));
   cs.back().S.push_back(rect);
   cs.back().S.back().prev = &empty_rect;
   int width = 0;
   int new_height;
   bool add_rectangle;
   bool add_A;
-  for(int i = 1; i < h.size(); i++) {
-    //cerr << "node " << i << ":" << endl;
-    width++;
-    new_height = pt.h_iv(h[i]);
+  for(int i = 1; i < t.size(); i++) {
+    width += node_length(t[i-1].node_id);
+    new_height = h_iv[(node_rank_as_entity(t[i].node_id) - 1) * 2 + t[i].is_reverse];
     rect = cs.back().S[0];
-    rect.J = rect.get_next_J(h[i]); // step this strip forward
+    rect.J = rect.get_next_J(t[i].node_id); // step this strip forward
     if(last_height > rect.J) {
       add_A = 1;
     }
@@ -171,12 +160,12 @@ haplo_d::haplo_d(vector<int64_t> h) {
     if(add_A) {
       cs.back().width = width;
       width = 0;
-      cs.push_back(cross_section(new_height,i,h[i]));
+      //TODO FIX
+      cs.push_back(cross_section(new_height,i,t[i].node_id));
     }
     if(add_rectangle) {
       rectangle new_rect;
-      new_rect.state.range_start = 1;
-      new_rect.state.range_end = new_height;
+      new_rect.extend(t[i].node_id);
       new_rect.J = new_height;
       cs.back().height = new_rect.J;
       cs.back().S.push_back(new_rect);
@@ -193,7 +182,7 @@ haplo_d::haplo_d(vector<int64_t> h) {
   }
 }
 
-void haplo_d::calculate_Is(vector<int64_t> h) {
+void haplo_d::calculate_Is() {
   // node 1 is done
   for(int b = 1; b < cs.size(); b++) {
     int64_t next_id = cs[b].get_id();
@@ -226,15 +215,6 @@ void haplo_d::calculate_Is(vector<int64_t> h) {
     }
     cs[b].S.back().I = cs[b].S.back().J;
   }
-  for(int i = 0; i < cs.size(); i++) {
-    cerr << "rectangles @ node " << i;
-    cerr << " [ total ht = " << cs[i].height << " & width = " << cs[i].width << " ]" << endl;
-    for(int j = 0; j < cs[i].S.size(); j++) {
-       cerr <<"    J = " << cs[i].S[j].J;
-       cerr <<", I = " << cs[i].S[j].I;
-       cerr <<", prev J = " << cs[i].S[j].prev->J << endl;
-    }
-  }
 }
 
 double haplo_d::probability(double recombination_penalty) {
@@ -245,21 +225,16 @@ double haplo_d::probability(double recombination_penalty) {
   // compute R for the first interval (which has no predecessor)
   // we are always working at the left edge of a cross_section
   cs[0].S[0].R = memo.rr_all(cs[0].height,cs[0].width);
-  cerr << "R so far " << cs[0].S[0].R << endl;
   for (int b = 1; b < cs.size(); b++) {
     S1 = 0;
     S1S2 = 0;
     for(int a = 0; a < cs[b].S.size(); a++) {
       // N.B. that R's are r^a_b's rather that R^a_b's. Thus the I factor
-      cerr << "(cs[b].S[a].prev->R) = " << (cs[b].S[a].prev->R) << " (cs[b].S[a].I) = " << (cs[b].S[a].I) << endl;
       S1 += (cs[b].S[a].prev->R) * (cs[b].S[a].I);
     }
-    cerr << "S1 = " << S1 << endl;
     for(int a = 0; a < cs[b-1].S.size(); a++) {
-      cerr << "(cs[b].S[a].prev->R) = " << (cs[b].S[a].prev->R) << " (cs[b].S[a].prev->I) = " << (cs[b].S[a].prev->I) << endl;
       S1S2 += (cs[b].S[a].prev->R) * (cs[b].S[a].prev->I);
     }
-    cerr << "S1S2 = " << S1S2 << endl;
     // calculate contributions from all continuing strips
     for(int a = 0; a < cs[b].S.size(); a++) {
       cs[b].S[a].R =
@@ -267,42 +242,12 @@ double haplo_d::probability(double recombination_penalty) {
       ((cs[b].S[a].prev->R) * memo.rr_adj(cs[b].width)) +
       (memo.recombination_penalty() * S1S2 * memo.rr_all(cs[b].height,cs[b].width)));
     }
-    // calculate contribution of the new strip
-    cerr << "R so far " << cs[b].S.back().R << " at loop " << b << endl;
   }
   double total_probability_haplotype = 0;
   for(int a = 0; a < cs.back().S.size(); a++) {
     total_probability_haplotype += cs.back().S[a].R;
   }
   return total_probability_haplotype;
-}
-
-// Makes a fake gPBWT-esque structure
-projected_thread array_to_projected_thread(vector<vector<int> > test_array) {
-  projected_thread thread;
-  thread.h_nodes = vector<projected_node>(test_array[0].size());
-  for(int i = 0; i < test_array.size(); i++) {
-    thread.h_nodes[i].node = i;
-    for(int j = 0; j < test_array[i].size() - 1; j++) {
-      int a = test_array[i][j];
-      int b = test_array[i][j+1];
-      int left = a - b;
-      int tot = thread.h_nodes[i+j].next_ranks.back();
-      for(int k = 1; k <= b; k++) {
-        thread.h_nodes[i+j].next_ranks.push_back(tot + k);
-      }
-      for(int l = 0; l < left; l++) {
-        thread.h_nodes[i+j].next_ranks.push_back(thread.h_nodes[i+j].next_ranks.back());
-      }
-    }
-    for(int j = 0; j < test_array[i].back(); j++) {
-      thread.h_nodes.back().next_ranks.push_back(0);
-    }
-    /*if(test_array[i].size() > 0) {
-      test_array[i][1] = 1;
-    }*/
-  }
-  return thread;
 }
 
 int main(void) {
@@ -359,135 +304,4 @@ int main(void) {
   }
 
   cerr << "RR tests passed!" << endl;
-
-  vector<vector<int> > test_down
-    { {4,3,3,3,3,2,1}
-    };
-  // Should have I = 4, 3, 2, 1, 0
-  vector<int64_t> h_down {0,1,2,3,4,5,6};
-  vector<int> h_iv {4,3,3,3,3,2,1};
-  pt = array_to_projected_thread(test_down);
-  cerr << "made the mock gPBWT" <<endl;
-  for(int i = 0; i < pt.h_nodes.size(); i++) {
-    cerr << "next_ranks @ node" << i << " = { ";
-    for(int j = 0; j < pt.h_nodes[i].next_ranks.size(); j++) {
-      cerr << pt.h_nodes[i].next_ranks[j] << " ";
-    }
-    cerr << "}" << endl;
-  }
-  haplo_d hd_down = haplo_d(h_down);
-  hd_down.calculate_Is(h_down);
-  double prob_down = hd_down.probability(0.2);
-  cerr << "Calculated " << prob_down << " as P(h|G,H) for test case 'down'" << endl;
-
-  vector<vector<int> > test_up
-    { {3,3,3,3,3},
-        {4,4,4,4},
-          {5,5,5},
-            {6,6},
-              {7}
-    };
-
-  vector<int64_t> h_up {0,1,2,3,4};
-  h_iv = {3,7,12,18,25};
-  pt = array_to_projected_thread(test_up);
-
-  for(int i = 0; i < pt.h_nodes.size(); i++) {
-    cerr << "next_ranks @ node" << i << " = { ";
-    for(int j = 0; j < pt.h_nodes[i].next_ranks.size(); j++) {
-      cerr << pt.h_nodes[i].next_ranks[j] << " ";
-    }
-    cerr << "}" << endl;
-  }
-
-  haplo_d hd_up = haplo_d(h_up);
-  hd_up.calculate_Is(h_up);
-  double prob_up = hd_up.probability(0.2);
-  cerr << "Calculated " << prob_up << " as P(h|G,H) for test case 'up'" << endl;
-
-
-  vector<vector<int> > test_tri
-    { {5,5,5},
-        {2,0}
-    };
-  vector<int64_t> h_tri {0,1,2};
-  h_iv = {5,7,5};
-  pt = array_to_projected_thread(test_tri);
-  for(int i = 0; i < pt.h_nodes.size(); i++) {
-    cerr << "next_ranks @ node" << i << " = { ";
-    for(int j = 0; j < pt.h_nodes[i].next_ranks.size(); j++) {
-      cerr << pt.h_nodes[i].next_ranks[j] << " ";
-    }
-    cerr << "}" << endl;
-  }
-
-  haplo_d hd_tri = haplo_d(h_tri);
-  hd_tri.calculate_Is(h_tri);
-  double prob_tri = hd_tri.probability(0.2);
-  cerr << "Calculated " << prob_tri << " as P(h|G,H) for test case 'up'" << endl;
-
-
-
-  vector<vector<int> > test_switch
-    { {8,0},
-        {4}
-    };
-  vector<int64_t> h_switch {0,1};
-  h_iv = {8,4};
-  pt = array_to_projected_thread(test_switch);
-  for(int i = 0; i < pt.h_nodes.size(); i++) {
-    cerr << "next_ranks @ node" << i << " = { ";
-    for(int j = 0; j < pt.h_nodes[i].next_ranks.size(); j++) {
-      cerr << pt.h_nodes[i].next_ranks[j] << " ";
-    }
-    cerr << "}" << endl;
-  }
-
-  haplo_d hd_switch = haplo_d(h_switch);
-  hd_switch.calculate_Is(h_switch);
-  double prob_switch = hd_switch.probability(0.2);
-  cerr << "Calculated " << prob_switch << " as P(h|G,H) for test case 'switch'" << endl;
-
-  vector<vector<int> > test_together
-    { {5,4,3},
-        {6,5},
-          {7}
-    };
-  vector<int64_t> h_together {0,1,2};
-  h_iv = {5,10,15};
-  pt = array_to_projected_thread(test_together);
-  for(int i = 0; i < pt.h_nodes.size(); i++) {
-    cerr << "next_ranks @ node" << i << " = { ";
-    for(int j = 0; j < pt.h_nodes[i].next_ranks.size(); j++) {
-      cerr << pt.h_nodes[i].next_ranks[j] << " ";
-    }
-    cerr << "}" << endl;
-  }
-
-  haplo_d hd_together = haplo_d(h_together);
-  hd_together.calculate_Is(h_together);
-  double prob_together = hd_together.probability(0.2);
-  cerr << "Calculated " << prob_together << " as P(h|G,H) for test case 'together'" << endl;
-
-  vector<vector<int> > test_snake
-    { {4,4,4,0,0},
-        {3,3,3,0},
-          {2,2,2}
-    };
-  vector<int64_t> h_snake {0,1,2,3,4};
-  h_iv = {4,7,9,5,2};
-  pt = array_to_projected_thread(test_snake);
-  for(int i = 0; i < pt.h_nodes.size(); i++) {
-    cerr << "next_ranks @ node" << i << " = { ";
-    for(int j = 0; j < pt.h_nodes[i].next_ranks.size(); j++) {
-      cerr << pt.h_nodes[i].next_ranks[j] << " ";
-    }
-    cerr << "}" << endl;
-  }
-
-  haplo_d hd_snake = haplo_d(h_snake);
-  hd_snake.calculate_Is(h_snake);
-  double prob_snake = hd_snake.probability(0.2);
-  cerr << "Calculated " << prob_snake << " as P(h|G,H) for test case 'snake'" << endl;
-
 }

@@ -4,12 +4,7 @@
 #include <iostream>
 #include <vector>
 
-#include "dummy_gPBWT.hpp"
-
 using namespace std;
-
-// Dummy vector in place of h_iv from xg
-vector<int64_t> h_iv;
 
 //  RRMemo functions
 //  Created by Jordan Eizenga on 6/21/16.
@@ -42,20 +37,17 @@ public:
 
 class rectangle {
 private:
-  // Search interval in B[] corresponding to strip
-  // index of this strip's first node within A. We don't use this yet, but we
-  // will when start talking about edits to haplo_d's
-public:
   ThreadSearchState state;
   int a_index;
   // This lets us find I^a_b-1; R^a_b-1 without having to keep indices
   // consistent between cross-sections
-  rectangle* prev = NULL;
+public:
+  rectangle* prev = nullptr;
   int J = 0;
   int I = 0;
   double R = 0;
-  inline int get_next_J(int64_t next_id);
-  inline void extend(int64_t next_id);
+  int get_next_J(int64_t next_id);
+  void extend(int64_t next_id);
 };
 
 // A cross-section is a column of rectangles S^*_b, * <= b. Each "rectangle" in
@@ -68,8 +60,7 @@ public:
   vector<rectangle> S;
   int height;
   int width = 1;
-
-  cross_section(int64_t new_height,int i,int64_t new_id);
+  cross_section(int64_t new_height,int b,int64_t new_node_id);
   inline int64_t get_id();
 };
 
@@ -78,8 +69,8 @@ class haplo_d {
 public:
   rectangle empty_rect;
   vector<cross_section> cs;
-  haplo_d(vector<int64_t> h);
+  haplo_d(const thread_t& t);
   // Needs to be called before the cross_sections have I values in their rectangles
-  void calculate_Is(vector<int64_t> h);
+  void calculate_Is();
   double probability(double recombination_penalty);
 };
