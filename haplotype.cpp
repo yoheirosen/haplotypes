@@ -277,6 +277,10 @@ double haplo_d::probability(double recombination_penalty) {
   return total_probability_haplotype;
 }
 
+haplo_d_subedit::haplo_d_subedit(thread_t alt, cross-section* start, cross-section* end) {
+  length = alt.size();
+}
+
 // Makes a fake gPBWT-esque structure
 projected_thread array_to_projected_thread(vector<vector<int> > test_array) {
   projected_thread thread;

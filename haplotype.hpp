@@ -83,3 +83,21 @@ public:
   void calculate_Is(vector<int64_t> h);
   double probability(double recombination_penalty);
 };
+
+class haplo_d_subedit {
+public:
+  pair<cross-section*,cross-section*> boundaries;
+  thread_t alt;
+  int length;
+  haplo_d_subedit(thread_t alt, cross-section* start, cross-section* end);
+}
+
+class haplo_d_edit {
+public:
+  haplo_d* parent;
+  vector<haplo_d_edit*> sites;
+  rectangle empty_rect;
+  vector<cross_section> alt_skeleton;
+  double probability(double recombination_penalty);
+  haplo_d rebase();
+}
